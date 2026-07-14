@@ -1,0 +1,42 @@
+[
+  {
+    "question": "What is compound interest?",
+    "ground_truth": "Compound interest is interest calculated on both the initial principal and the accumulated interest from previous periods. Unlike simple interest, which is calculated only on the principal, compound interest grows exponentially over time. The formula is A = P(1 + r/n)^(nt), where P is principal, r is annual rate, n is compounding frequency, and t is time in years."
+  },
+  {
+    "question": "What is the difference between a Roth IRA and a Traditional IRA?",
+    "ground_truth": "A Traditional IRA offers tax-deductible contributions with taxes paid on withdrawals in retirement. A Roth IRA uses after-tax contributions but offers tax-free withdrawals in retirement. Traditional IRAs require minimum distributions starting at age 73, while Roth IRAs have no required minimum distributions. Income limits apply to Roth IRA contributions."
+  },
+  {
+    "question": "How does dollar-cost averaging work?",
+    "ground_truth": "Dollar-cost averaging is an investment strategy where you invest a fixed amount of money at regular intervals regardless of market conditions. When prices are low, you buy more shares; when prices are high, you buy fewer shares. Over time, this can lower the average cost per share and reduce the impact of market volatility on your portfolio."
+  },
+  {
+    "question": "What is an emergency fund and how much should I save?",
+    "ground_truth": "An emergency fund is a savings reserve set aside for unexpected expenses such as medical bills, car repairs, or job loss. Financial experts generally recommend saving three to six months of essential living expenses. The fund should be kept in a liquid, easily accessible account like a high-yield savings account."
+  },
+  {
+    "question": "What is the penalty for early withdrawal from a 401(k)?",
+    "ground_truth": "Early withdrawals from a 401(k) before age 59½ typically incur a 10% early withdrawal penalty in addition to regular income taxes on the withdrawn amount. Some exceptions exist, including hardship withdrawals, disability, and substantially equal periodic payments under Rule 72(t). The SECURE 2.0 Act also introduced some penalty-free emergency withdrawal provisions."
+  },
+  {
+    "question": "How do index funds differ from actively managed funds?",
+    "ground_truth": "Index funds passively track a market index like the S&P 500 and aim to match its performance, while actively managed funds employ fund managers who select investments to try to outperform the market. Index funds typically have much lower expense ratios (0.03-0.20%) compared to actively managed funds (0.50-1.50%). Historically, most actively managed funds underperform their benchmark index over long periods."
+  },
+  {
+    "question": "What is a credit score and what factors affect it?",
+    "ground_truth": "A credit score is a numerical representation of your creditworthiness, typically ranging from 300 to 850. The five main factors are: payment history (35%), amounts owed or credit utilization (30%), length of credit history (15%), credit mix (10%), and new credit inquiries (10%). FICO and VantageScore are the two primary scoring models used by lenders."
+  },
+  {
+    "question": "What is tax-loss harvesting?",
+    "ground_truth": "Tax-loss harvesting is an investment strategy where you sell securities at a loss to offset capital gains taxes on other investments. The realized losses can offset gains dollar-for-dollar, and up to $3,000 of excess losses can be deducted from ordinary income annually. Remaining losses can be carried forward to future tax years. The wash-sale rule prohibits repurchasing substantially identical securities within 30 days."
+  },
+  {
+    "question": "What is the difference between term and whole life insurance?",
+    "ground_truth": "Term life insurance provides coverage for a specific period (10, 20, or 30 years) and pays a death benefit only if the insured dies during the term. Whole life insurance provides lifelong coverage and includes a cash value component that grows over time. Term insurance is significantly cheaper but has no investment component, while whole life is more expensive but builds equity."
+  },
+  {
+    "question": "How does inflation affect purchasing power?",
+    "ground_truth": "Inflation is the rate at which the general price level of goods and services rises over time, eroding purchasing power. If inflation is 3% annually, something that costs $100 today will cost $103 next year. This means the same amount of money buys fewer goods and services over time. To maintain purchasing power, investments and savings need to earn returns that at least match or exceed the inflation rate."
+  }
+]

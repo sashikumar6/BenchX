@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports: ["8000:8000"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://benchx:benchx@db:5432/benchx
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    depends_on: [db]
+  
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: benchx
+      POSTGRES_PASSWORD: benchx
+      POSTGRES_DB: benchx
+    ports: ["5432:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+
+volumes:
+  postgres_data:
