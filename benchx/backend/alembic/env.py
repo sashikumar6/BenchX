@@ -18,7 +18,11 @@ from database import Base, Comparison, ComparisonHistory, Dataset, Experiment, R
 # access to the values within the .ini file in use.
 config = context.config
 
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "postgresql+asyncpg://benchx:benchx@localhost:5432/benchx"))
+database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://benchx:benchx@localhost:5432/benchx")
+# configparser (which set_main_option writes through) treats "%" as the start
+# of an interpolation sequence, so a URL-encoded character like "%40" in a
+# password breaks it unless escaped as "%%40" first.
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
