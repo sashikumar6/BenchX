@@ -1,14 +1,12 @@
 import { Fragment, useState } from 'react'
+import EmptyState from './EmptyState'
+import { TextButton } from './Button'
 
 export default function DatasetsTable({ datasets, onDelete }) {
   const [expandedId, setExpandedId] = useState(null)
 
   if (datasets.length === 0) {
-    return (
-      <div className="bg-bg-card border border-border rounded-2xl p-10 text-center text-text-secondary text-sm">
-        No datasets yet. Upload one on the left to get started.
-      </div>
-    )
+    return <EmptyState>No datasets yet — upload a CSV or JSON file on the left to get started.</EmptyState>
   }
 
   return (
@@ -33,18 +31,12 @@ export default function DatasetsTable({ datasets, onDelete }) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setExpandedId(expandedId === ds.id ? null : ds.id)}
-                      className="text-accent hover:text-accent-hover text-xs font-medium cursor-pointer"
-                    >
+                    <TextButton onClick={() => setExpandedId(expandedId === ds.id ? null : ds.id)}>
                       {expandedId === ds.id ? 'Hide' : 'View'}
-                    </button>
-                    <button
-                      onClick={() => onDelete(ds.id)}
-                      className="text-danger hover:text-danger/80 text-xs font-medium cursor-pointer"
-                    >
+                    </TextButton>
+                    <TextButton danger onClick={() => onDelete(ds.id)}>
                       Delete
-                    </button>
+                    </TextButton>
                   </div>
                 </td>
               </tr>

@@ -1,9 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import ScoreBar from './ScoreBar'
+
+const EMPTY_RESULTS = []
 
 export default function QuestionExplorer({ runs, resultsByRun }) {
-  const baselineResults = resultsByRun[runs[0]?.run_id] || []
+  const baselineResults = resultsByRun[runs[0]?.run_id] || EMPTY_RESULTS
   const questions = useMemo(() => baselineResults.map((r) => r.question), [baselineResults])
   const [selected, setSelected] = useState(questions[0] || '')
+
+  useEffect(() => {
+    if (!questions.includes(selected)) setSelected(questions[0] || '')
+  }, [questions, selected])
 
   if (questions.length === 0) return null
 
@@ -34,23 +41,18 @@ export default function QuestionExplorer({ runs, resultsByRun }) {
                   <div className="bg-bg-input border border-border rounded-lg p-3 text-xs text-text-secondary leading-relaxed max-h-48 overflow-y-auto mb-4 flex-1">
                     {result.response}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-2 gap-3 text-xs mb-3">
                     <p className="text-text-muted">
-                      Lat: <span className="text-text-primary font-mono">{Math.round(result.latency_ms)}ms</span>
+                      Latency: <span className="text-text-primary font-mono">{Math.round(result.latency_ms)}ms</span>
                     </p>
                     <p className="text-text-muted">
                       Cost:{' '}
                       <span className="text-text-primary font-mono">${result.cost_usd.toFixed(6)}</span>
                     </p>
-                    <p className="text-text-muted">
-                      Rel: <span className="text-text-primary font-mono">{result.relevancy_score.toFixed(4)}</span>
-                    </p>
-                    <p className="text-text-muted">
-                      Hall:{' '}
-                      <span className="text-text-primary font-mono">
-                        {result.hallucination_score.toFixed(4)}
-                      </span>
-                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <ScoreBar label="Relevancy" value={result.relevancy_score} />
+                    <ScoreBar label="Hallucination" value={result.hallucination_score} lowerBetter />
                   </div>
                 </>
               ) : (

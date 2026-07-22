@@ -1,4 +1,7 @@
 import { Fragment, useState } from 'react'
+import EmptyState from './EmptyState'
+import ScoreBar from './ScoreBar'
+import { TextButton } from './Button'
 
 function truncate(text, n = 60) {
   if (!text) return '—'
@@ -9,11 +12,7 @@ export default function ResultsTable({ results }) {
   const [expandedId, setExpandedId] = useState(null)
 
   if (results.length === 0) {
-    return (
-      <div className="bg-bg-card border border-border rounded-2xl p-10 text-center text-text-secondary text-sm">
-        No results yet.
-      </div>
-    )
+    return <EmptyState>No results yet.</EmptyState>
   }
 
   return (
@@ -25,8 +24,8 @@ export default function ResultsTable({ results }) {
             <th className="px-4 py-3 font-medium">Response</th>
             <th className="px-4 py-3 font-medium">Latency</th>
             <th className="px-4 py-3 font-medium">Cost</th>
-            <th className="px-4 py-3 font-medium">Relevancy</th>
-            <th className="px-4 py-3 font-medium">Hallucination</th>
+            <th className="px-4 py-3 font-medium" title="How well the response addresses the question — higher is better.">Relevancy</th>
+            <th className="px-4 py-3 font-medium" title="Risk that the response contains claims not supported by the context/ground truth — lower is better.">Hallucination</th>
             <th className="px-4 py-3 font-medium" />
           </tr>
         </thead>
@@ -38,15 +37,12 @@ export default function ResultsTable({ results }) {
                 <td className="px-4 py-3 text-text-secondary max-w-[16rem] truncate">{truncate(r.response, 50)}</td>
                 <td className="px-4 py-3 text-text-secondary font-mono text-xs">{Math.round(r.latency_ms)} ms</td>
                 <td className="px-4 py-3 text-text-secondary font-mono text-xs">${r.cost_usd.toFixed(6)}</td>
-                <td className="px-4 py-3 text-text-secondary font-mono text-xs">{r.relevancy_score.toFixed(4)}</td>
-                <td className="px-4 py-3 text-text-secondary font-mono text-xs">{r.hallucination_score.toFixed(4)}</td>
+                <td className="px-4 py-3"><ScoreBar label="" value={r.relevancy_score} /></td>
+                <td className="px-4 py-3"><ScoreBar label="" value={r.hallucination_score} lowerBetter /></td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
-                    className="text-accent hover:text-accent-hover text-xs font-medium cursor-pointer"
-                  >
+                  <TextButton onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
                     {expandedId === r.id ? 'Collapse' : 'Expand'}
-                  </button>
+                  </TextButton>
                 </td>
               </tr>
               {expandedId === r.id && (
@@ -73,6 +69,21 @@ export default function ResultsTable({ results }) {
                             Hallucination Reason
                           </p>
                           <p className="text-text-secondary text-sm">{r.hallucination_reason}</p>
+                        </div>
+                      )}
+                      {r.retrieved_chunk_ids?.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-accent mb-1.5">
+                            Retrieved Context ({r.retrieved_chunk_ids.length} chunks)
+                          </p>
+                          <div className="flex flex-col gap-2">
+                            {r.retrieved_chunk_ids.map((c) => (
+                              <div key={c.chunk_id} className="border border-border rounded-lg p-3 bg-bg-card">
+                                <p className="text-[10px] text-text-muted mb-1">{c.document_filename}</p>
+                                <p className="text-text-secondary text-xs whitespace-pre-wrap">{c.content}</p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                       <div className="flex gap-6">

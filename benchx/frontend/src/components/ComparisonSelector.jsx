@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import Button from './Button'
+import EmptyState from './EmptyState'
 
 export default function ComparisonSelector({ runs, experimentNames, onCompare, loading }) {
   const [selected, setSelected] = useState([])
@@ -16,11 +18,7 @@ export default function ComparisonSelector({ runs, experimentNames, onCompare, l
   }
 
   if (runs.length === 0) {
-    return (
-      <div className="bg-bg-card border border-border rounded-2xl p-10 text-center text-text-secondary text-sm">
-        No completed runs yet. Finish a run in the Runs view first.
-      </div>
-    )
+    return <EmptyState>No completed runs yet — finish a run first, then come back here to compare two or more.</EmptyState>
   }
 
   return (
@@ -72,17 +70,9 @@ export default function ComparisonSelector({ runs, experimentNames, onCompare, l
           placeholder="Comparison name (optional)"
           className="flex-1 bg-bg-input border border-border rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
         />
-        <button
-          onClick={handleCompare}
-          disabled={selected.length < 2 || loading}
-          className={`px-6 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
-            selected.length < 2 || loading
-              ? 'bg-bg-input text-text-muted border border-border cursor-not-allowed'
-              : 'bg-accent hover:bg-accent-hover text-white shadow-lg shadow-accent/20'
-          }`}
-        >
+        <Button onClick={handleCompare} disabled={selected.length < 2 || loading}>
           {loading ? 'Comparing…' : `Compare Selected Runs (${selected.length})`}
-        </button>
+        </Button>
       </div>
     </div>
   )

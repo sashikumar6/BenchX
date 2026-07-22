@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import RunsTable from '../components/RunsTable'
+import PageHeader from '../components/PageHeader'
 import { listDatasets, listExperiments, listRuns } from '../api'
-import { useToast } from '../components/Toast'
-import { useInterval } from '../hooks/useInterval'
+import { useToast } from '../hooks/useToast'
+import { useRunProgress } from '../hooks/useRunProgress'
+
+function RunProgressListener({ runId, onEvent }) {
+  useRunProgress(runId, true, onEvent)
+  return null
+}
 
 export default function RunsPage() {
   const [runs, setRuns] = useState([])
@@ -32,14 +38,31 @@ export default function RunsPage() {
     refresh()
   }, [refresh])
 
-  const hasActiveRuns = runs.some((r) => r.status === 'running')
-  useInterval(refresh, 2000, hasActiveRuns)
-
-  if (loading) {
-    return <div className="text-text-secondary text-sm">Loading runs…</div>
+  const handleProgress = (event) => {
+    setRuns((previous) => previous.map((run) => {
+      if (run.id !== event.run_id) return run
+      if (event.type === 'progress') return { ...run, completed_questions: event.completed, total_questions: event.total }
+      if (event.type === 'completed') return { ...run, status: 'completed', completed_questions: run.total_questions }
+      if (event.type === 'error') return { ...run, status: 'failed', error: event.message }
+      return run
+    }))
   }
 
   return (
-    <RunsTable runs={runs} experimentNames={experimentNames} datasetNames={datasetNames} />
+    <div>
+      <PageHeader
+        eyebrow="04 — EXECUTION"
+        title="Runs"
+        description="A run executes one saved experiment against one dataset — every question gets sent to the model and scored. Start a run from the Run button on an experiment; progress and results land here."
+      />
+      {loading ? (
+        <div className="bg-bg-card border border-border rounded-2xl p-4 space-y-3">{[1, 2, 3].map((row) => <div key={row} className="h-14 rounded-xl shimmer-loading" />)}</div>
+      ) : (
+        <>
+          {runs.filter((run) => run.status === 'running').map((run) => <RunProgressListener key={run.id} runId={run.id} onEvent={handleProgress} />)}
+          <RunsTable runs={runs} experimentNames={experimentNames} datasetNames={datasetNames} />
+        </>
+      )}
+    </div>
   )
 }

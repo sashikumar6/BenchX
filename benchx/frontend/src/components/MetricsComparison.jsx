@@ -33,6 +33,13 @@ function MetricCard({ metricKey, runs, pairwise }) {
       direction: pw?.direction,
       significant: pw?.significant,
       pValue: pw?.p_value,
+      confidenceInterval: pw?.confidence_interval,
+      effectSize: pw?.effect_size,
+      interpretation: pw?.interpretation,
+      qValue: pw?.q_value,
+      significantCorrected: pw?.significant_corrected,
+      n: pw?.n,
+      underpowered: pw?.underpowered,
       deltaPct:
         pw && baseline.metrics[metricKey]?.mean
           ? (pw.delta / Math.abs(baseline.metrics[metricKey].mean)) * 100
@@ -85,19 +92,47 @@ function MetricCard({ metricKey, runs, pairwise }) {
             {d.isBaseline ? (
               <span className="text-text-muted">baseline</span>
             ) : (
-              <span
-                className={`font-medium ${
+              <div className="text-right">
+                <span
+                  className={`font-medium ${
                   d.direction === 'improved'
                     ? 'text-success'
                     : d.direction === 'degraded'
                       ? 'text-danger'
                       : 'text-text-muted'
                 }`}
-              >
-                {d.significant ? '✅' : '—'}{' '}
-                {d.deltaPct !== null ? `${d.deltaPct > 0 ? '+' : ''}${d.deltaPct.toFixed(0)}%` : ''}{' '}
-                {d.pValue != null ? `(p=${d.pValue.toFixed(3)})` : '(p=—)'}
-              </span>
+                >
+                  {d.significant ? '✅' : '—'}{' '}
+                  {d.deltaPct !== null ? `${d.deltaPct > 0 ? '+' : ''}${d.deltaPct.toFixed(0)}%` : ''}{' '}
+                  {d.pValue != null ? `(p=${d.pValue.toFixed(3)})` : '(p=—)'}
+                </span>
+                {d.confidenceInterval && (
+                  <p
+                    className="text-[10px] text-text-muted mt-1"
+                    title={`We’re 95% confident the true ${info.label.toLowerCase()} difference (candidate minus baseline) is between ${info.format(d.confidenceInterval[0])} and ${info.format(d.confidenceInterval[1])}.`}
+                  >
+                    95% CI: [{info.format(d.confidenceInterval[0])}, {info.format(d.confidenceInterval[1])}]
+                  </p>
+                )}
+                {d.interpretation && d.interpretation !== 'negligible' && (
+                  <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${d.interpretation === 'large' ? 'bg-purple-500/20 text-purple-300' : d.interpretation === 'medium' ? 'bg-accent-muted text-accent' : 'bg-bg-input text-text-muted'}`}>
+                    {d.interpretation} effect{d.effectSize != null ? ` · d=${d.effectSize.toFixed(2)}` : ''}
+                  </span>
+                )}
+                {d.qValue != null && (
+                  <p
+                    className="text-[10px] text-text-muted mt-1"
+                    title="FDR-corrected across every metric x pair compared in this run, so testing more things at once doesn't inflate the false-positive rate."
+                  >
+                    {d.significantCorrected ? '✅' : '—'} q={d.qValue.toFixed(3)} (FDR-corrected)
+                  </p>
+                )}
+                {d.underpowered && (
+                  <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-warning-muted text-warning">
+                    underpowered · n={d.n}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -109,7 +144,11 @@ function MetricCard({ metricKey, runs, pairwise }) {
 export default function MetricsComparison({ runs, pairwise }) {
   return (
     <div>
-      <h2 className="text-lg font-semibold text-text-primary mb-4">Metrics Comparison</h2>
+      <h2 className="text-lg font-semibold text-text-primary mb-1">Metrics Comparison</h2>
+      <p className="text-xs text-text-secondary mb-4">
+        Each bar is a run's average for that metric vs. the leftmost run (the baseline). ✅ means the difference is
+        statistically significant — unlikely to be random noise — not just numerically different.
+      </p>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {Object.keys(METRIC_INFO).map((key) => (
           <MetricCard key={key} metricKey={key} runs={runs} pairwise={pairwise} />

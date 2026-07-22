@@ -1,27 +1,19 @@
 import { useState } from 'react'
 import RunModal from './RunModal'
-
-const STATUS_STYLES = {
-  configured: 'bg-bg-input text-text-muted border-border',
-  running: 'bg-accent-muted text-accent border-accent/30',
-  completed: 'bg-success-muted text-success border-success/30',
-  failed: 'bg-danger-muted text-danger border-danger/30',
-}
+import StatusPill from './StatusPill'
+import EmptyState from './EmptyState'
+import { TextButton } from './Button'
 
 function truncate(text, n = 40) {
   if (!text) return '—'
   return text.length > n ? `${text.slice(0, n)}…` : text
 }
 
-export default function ExperimentsTable({ experiments, datasets, onDelete, onStartRun, starting }) {
+export default function ExperimentsTable({ experiments, datasets, corporaById = {}, onDelete, onStartRun, starting }) {
   const [runTarget, setRunTarget] = useState(null)
 
   if (experiments.length === 0) {
-    return (
-      <div className="bg-bg-card border border-border rounded-2xl p-10 text-center text-text-secondary text-sm">
-        No experiments yet. Configure one on the left to get started.
-      </div>
-    )
+    return <EmptyState>No experiments yet — create your first experiment on the left →</EmptyState>
   }
 
   return (
@@ -35,6 +27,7 @@ export default function ExperimentsTable({ experiments, datasets, onDelete, onSt
               <th className="px-4 py-3 font-medium">Temp</th>
               <th className="px-4 py-3 font-medium">Max Tokens</th>
               <th className="px-4 py-3 font-medium">System Prompt</th>
+              <th className="px-4 py-3 font-medium">Knowledge Base</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Created</th>
               <th className="px-4 py-3 font-medium">Actions</th>
@@ -50,30 +43,32 @@ export default function ExperimentsTable({ experiments, datasets, onDelete, onSt
                 <td className="px-4 py-3 text-text-secondary max-w-[16rem] truncate" title={exp.system_prompt || ''}>
                   {truncate(exp.system_prompt)}
                 </td>
+                <td className="px-4 py-3 text-text-secondary text-xs">
+                  {exp.corpus_id ? (
+                    <span
+                      className="text-accent"
+                      title={`Splits documents into ~${exp.chunk_size}-word passages and retrieves the top ${exp.top_k} most relevant per question.`}
+                    >
+                      {corporaById[exp.corpus_id]?.name || 'Knowledge base'} · {exp.chunk_size}-word chunks · top {exp.top_k}
+                    </span>
+                  ) : (
+                    <span title="No knowledge base attached — answers come from the model's own knowledge.">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[exp.status] || STATUS_STYLES.configured}`}
-                  >
-                    {exp.status}
-                  </span>
+                  <StatusPill status={exp.status} />
                 </td>
                 <td className="px-4 py-3 text-text-muted text-xs whitespace-nowrap">
                   {new Date(exp.created_at).toLocaleString()}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setRunTarget(exp)}
-                      className="text-accent hover:text-accent-hover text-xs font-medium cursor-pointer"
-                    >
+                    <TextButton onClick={() => setRunTarget(exp)} title="Run this experiment against a dataset">
                       Run
-                    </button>
-                    <button
-                      onClick={() => onDelete(exp.id)}
-                      className="text-danger hover:text-danger/80 text-xs font-medium cursor-pointer"
-                    >
+                    </TextButton>
+                    <TextButton danger onClick={() => onDelete(exp.id)}>
                       Delete
-                    </button>
+                    </TextButton>
                   </div>
                 </td>
               </tr>
@@ -88,8 +83,8 @@ export default function ExperimentsTable({ experiments, datasets, onDelete, onSt
           datasets={datasets}
           starting={starting}
           onClose={() => setRunTarget(null)}
-          onStart={async (experimentId, datasetId) => {
-            const ok = await onStartRun(experimentId, datasetId)
+          onStart={async (experimentId, datasetId, replicateCount) => {
+            const ok = await onStartRun(experimentId, datasetId, replicateCount)
             if (ok) setRunTarget(null)
           }}
         />

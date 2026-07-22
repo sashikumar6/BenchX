@@ -2,16 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import MetricSummaryCards from '../components/MetricSummaryCards'
 import ResultsTable from '../components/ResultsTable'
-import Spinner from '../components/Spinner'
+import StatusPill from '../components/StatusPill'
+import ScoreBar from '../components/ScoreBar'
 import { getDataset, getExperiment, getRun } from '../api'
-import { useToast } from '../components/Toast'
-import { useInterval } from '../hooks/useInterval'
-
-const STATUS_STYLES = {
-  running: 'bg-accent-muted text-accent border-accent/30',
-  completed: 'bg-success-muted text-success border-success/30',
-  failed: 'bg-danger-muted text-danger border-danger/30',
-}
+import { useToast } from '../hooks/useToast'
+import { useRunProgress } from '../hooks/useRunProgress'
 
 export default function RunDetailPage() {
   const { runId } = useParams()
@@ -19,6 +14,7 @@ export default function RunDetailPage() {
   const [experiment, setExperiment] = useState(null)
   const [dataset, setDataset] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [latestResult, setLatestResult] = useState(null)
   const toast = useToast()
 
   const refresh = useCallback(async () => {
@@ -44,7 +40,30 @@ export default function RunDetailPage() {
     refresh()
   }, [refresh])
 
-  useInterval(refresh, 2000, run?.status === 'running')
+  const handleProgress = useCallback((event) => {
+    if (event.type === 'progress') {
+      setRun((previous) => previous ? {
+        ...previous,
+        completed_questions: event.completed,
+        total_questions: event.total,
+        results: event.latest_result && !previous.results.some((result) => result.id === event.latest_result.id)
+          ? [...previous.results, event.latest_result]
+          : previous.results,
+      } : previous)
+      if (event.latest_result) setLatestResult(event.latest_result)
+    }
+    if (event.type === 'completed') {
+      setRun((previous) => previous ? { ...previous, status: 'completed', completed_questions: previous.total_questions } : previous)
+      refresh()
+    }
+    if (event.type === 'error') {
+      setRun((previous) => previous ? { ...previous, status: 'failed', error: event.message } : previous)
+      toast.error(event.message)
+      refresh()
+    }
+  }, [refresh, toast])
+
+  useRunProgress(runId, run?.status === 'running', handleProgress)
 
   if (loading || !run) {
     return <div className="text-text-secondary text-sm">Loading run…</div>
@@ -61,12 +80,12 @@ export default function RunDetailPage() {
       <div className="bg-bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-text-primary">
+            <h1 className="text-xl font-semibold text-text-primary tracking-tight">
               {experiment?.name || 'Run detail'}
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              {experiment?.model} · temp {experiment?.temperature?.toFixed(1)} · max_tokens{' '}
-              {experiment?.max_tokens} · dataset {dataset?.name || '—'}
+              {experiment?.model} · temperature {experiment?.temperature?.toFixed(1)} · max output{' '}
+              {experiment?.max_tokens} tokens · dataset {dataset?.name || '—'}
             </p>
             {experiment?.system_prompt && (
               <p className="text-xs text-text-muted mt-1 max-w-2xl truncate">
@@ -74,17 +93,30 @@ export default function RunDetailPage() {
               </p>
             )}
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border ${STATUS_STYLES[run.status] || ''}`}
-          >
-            {run.status === 'running' && <Spinner className="w-3 h-3" />}
-            {run.status} · {run.completed_questions}/{run.total_questions}
-          </span>
+          <StatusPill status={run.status} detail={`${run.completed_questions}/${run.total_questions} questions`} />
         </div>
         {run.error && <p className="text-danger text-sm mt-3">{run.error}</p>}
       </div>
 
       <MetricSummaryCards results={run.results} />
+
+      {run.status === 'running' && (
+        <div className="bg-bg-card border border-accent/30 rounded-2xl p-5">
+          <div className="flex justify-between text-sm mb-2"><span className="text-text-primary font-medium">Live progress</span><span className="text-accent font-mono">{run.completed_questions} / {run.total_questions} questions completed</span></div>
+          <div className="h-2 rounded-full bg-bg-input overflow-hidden"><div className="h-full bg-gradient-to-r from-accent to-candidate transition-all duration-500" style={{ width: `${run.total_questions ? (run.completed_questions / run.total_questions) * 100 : 0}%` }} /></div>
+          {latestResult && (
+            <div className="mt-4 rounded-xl bg-bg-input border border-border p-3">
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Latest result</p>
+              <p className="text-sm text-text-primary truncate">{latestResult.question}</p>
+              <p className="text-xs text-text-secondary mt-1 truncate">{latestResult.response}</p>
+              <div className="flex items-center gap-4 mt-3">
+                <p className="text-xs text-text-muted">{Math.round(latestResult.latency_ms)}ms · ${latestResult.cost_usd.toFixed(6)}</p>
+                <ScoreBar label="Relevancy" value={latestResult.relevancy_score} className="flex-1 max-w-[10rem]" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <ResultsTable results={run.results} />
     </div>

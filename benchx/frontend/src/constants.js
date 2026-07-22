@@ -1,12 +1,3 @@
-// Mirrors backend/config.py SUPPORTED_MODELS keys.
-export const SUPPORTED_MODELS = [
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini (OpenAI)' },
-  { value: 'gpt-4o', label: 'GPT-4o (OpenAI)' },
-  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Anthropic)' },
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Anthropic)' },
-  { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant (Groq)' },
-]
-
 export const METRIC_INFO = {
   latency: { label: 'Latency', icon: '⚡', lowerBetter: true, format: (v) => `${Math.round(v)} ms` },
   cost: { label: 'Cost', icon: '💰', lowerBetter: true, format: (v) => `$${v.toFixed(6)}` },

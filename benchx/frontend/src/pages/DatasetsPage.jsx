@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import DatasetUpload from '../components/DatasetUpload'
 import DatasetsTable from '../components/DatasetsTable'
+import PageHeader from '../components/PageHeader'
 import { createDataset, deleteDataset, listDatasets } from '../api'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState([])
@@ -49,18 +50,25 @@ export default function DatasetsPage() {
     }
   }
 
-  if (loading) {
-    return <div className="text-text-secondary text-sm">Loading datasets…</div>
-  }
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
-      <div className="lg:col-span-3">
-        <DatasetUpload onUpload={handleUpload} loading={uploading} />
-      </div>
-      <div className="lg:col-span-7">
-        <DatasetsTable datasets={datasets} onDelete={handleDelete} />
-      </div>
+    <div>
+      <PageHeader
+        eyebrow="02 — BENCHMARKS"
+        title="Datasets"
+        description="A dataset is the fixed set of questions (with optional ground-truth answers) every experiment gets benchmarked against — upload one here, then pick it when you start a run."
+      />
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6"><div className="lg:col-span-3 h-80 rounded-2xl shimmer-loading" /><div className="lg:col-span-7 h-64 rounded-2xl shimmer-loading" /></div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
+          <div className="lg:col-span-3">
+            <DatasetUpload onUpload={handleUpload} loading={uploading} />
+          </div>
+          <div className="lg:col-span-7">
+            <DatasetsTable datasets={datasets} onDelete={handleDelete} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

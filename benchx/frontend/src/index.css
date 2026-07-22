@@ -2,27 +2,31 @@
 
 /* ── BenchX Design Tokens ─────────────────────────────────────────── */
 @theme {
-  --color-bg-primary: #111827;
-  --color-bg-secondary: #0b1220;
-  --color-bg-card: #1f2937;
-  --color-bg-card-hover: #263244;
-  --color-bg-input: #182231;
-  --color-border: #2d3748;
-  --color-border-hover: #3f4a5c;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
-  --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
-  --color-accent-muted: rgba(99, 102, 241, 0.15);
-  --color-success: #22c55e;
-  --color-success-muted: rgba(34, 197, 94, 0.15);
-  --color-danger: #ef4444;
-  --color-danger-muted: rgba(239, 68, 68, 0.15);
-  --color-warning: #f59e0b;
-  --color-warning-muted: rgba(245, 158, 11, 0.15);
+  --color-bg-primary: #0a0a0c;
+  --color-bg-secondary: #050506;
+  --color-bg-card: #131316;
+  --color-bg-card-hover: #1a1a1e;
+  --color-bg-input: #0e0e10;
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-hover: rgba(255, 255, 255, 0.18);
+  --color-text-primary: #f2f2f0;
+  --color-text-secondary: #9a9a9f;
+  --color-text-muted: #616166;
+  --color-accent: #d4ff4f;
+  --color-accent-hover: #e8ffa0;
+  --color-accent-muted: rgba(212, 255, 79, 0.12);
+  --color-success: #4ade80;
+  --color-success-muted: rgba(74, 222, 128, 0.15);
+  --color-danger: #f87171;
+  --color-danger-muted: rgba(248, 113, 113, 0.15);
+  --color-warning: #fbbf24;
+  --color-warning-muted: rgba(251, 191, 36, 0.15);
   --color-baseline: #8b5cf6;
   --color-candidate: #06b6d4;
+
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Space Grotesk', 'IBM Plex Sans', sans-serif;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────── */
@@ -32,11 +36,16 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg-primary);
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────── */
@@ -47,11 +56,11 @@ body {
   background: var(--color-bg-secondary);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--color-border-hover);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border-hover);
+  background: var(--color-text-muted);
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
@@ -66,8 +75,13 @@ body {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
-  50%      { box-shadow: 0 0 20px 4px rgba(99, 102, 241, 0.2); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 255, 79, 0.4); }
+  50%      { box-shadow: 0 0 20px 4px rgba(212, 255, 79, 0.2); }
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px currentColor; }
+  50%      { opacity: 0.35; box-shadow: 0 0 2px currentColor; }
 }
 
 @keyframes shimmer {
@@ -82,6 +96,10 @@ body {
 .animate-slide-down {
   animation: slideDown 0.35s ease-out forwards;
   overflow: hidden;
+}
+
+.animate-pulse-dot {
+  animation: pulseDot 1.2s ease-in-out infinite;
 }
 
 .shimmer-loading {

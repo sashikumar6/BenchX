@@ -1,11 +1,7 @@
 import { Link } from 'react-router-dom'
-import Spinner from './Spinner'
-
-const STATUS_STYLES = {
-  running: 'bg-accent-muted text-accent border-accent/30',
-  completed: 'bg-success-muted text-success border-success/30',
-  failed: 'bg-danger-muted text-danger border-danger/30',
-}
+import StatusPill from './StatusPill'
+import EmptyState from './EmptyState'
+import { textActionClasses } from './Button'
 
 function formatDuration(startedAt, completedAt) {
   if (!startedAt) return '—'
@@ -17,11 +13,7 @@ function formatDuration(startedAt, completedAt) {
 
 export default function RunsTable({ runs, experimentNames, datasetNames }) {
   if (runs.length === 0) {
-    return (
-      <div className="bg-bg-card border border-border rounded-2xl p-10 text-center text-text-secondary text-sm">
-        No runs yet. Start one from the Experiments view.
-      </div>
-    )
+    return <EmptyState>No runs yet — go to Experiments and hit Run to see results here.</EmptyState>
   }
 
   return (
@@ -48,12 +40,7 @@ export default function RunsTable({ runs, experimentNames, datasetNames }) {
                 {datasetNames[run.dataset_id] || run.dataset_id}
               </td>
               <td className="px-4 py-3">
-                <span
-                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[run.status] || ''}`}
-                >
-                  {run.status === 'running' && <Spinner className="w-3 h-3" />}
-                  {run.status}
-                </span>
+                <StatusPill status={run.status} />
               </td>
               <td className="px-4 py-3 text-text-secondary font-mono text-xs">
                 {run.completed_questions}/{run.total_questions}
@@ -65,10 +52,7 @@ export default function RunsTable({ runs, experimentNames, datasetNames }) {
                 {formatDuration(run.started_at, run.completed_at)}
               </td>
               <td className="px-4 py-3">
-                <Link
-                  to={`/runs/${run.id}`}
-                  className="text-accent hover:text-accent-hover text-xs font-medium cursor-pointer"
-                >
+                <Link to={`/runs/${run.id}`} className={textActionClasses()}>
                   View
                 </Link>
               </td>
