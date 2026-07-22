@@ -1,0 +1,6 @@
+[
+  {
+    "question": "What is the annual account maintenance fee for BenchX Wealth Partners' Starter Advisory Plan after the introductory period ends, and how long is that introductory period?",
+    "ground_truth": "The fee is 0.35% of assets under management annually, billed quarterly, after an 18-month introductory period during which the fee is waived entirely."
+  }
+]
