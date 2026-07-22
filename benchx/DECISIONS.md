@@ -185,11 +185,14 @@ not raw deltas.
 # BenchX Platform — Experiment Tracking & N-Way Comparison
 
 The ADRs above covered the original stateless, two-agent `/compare` prototype
-(`comparator.py` / `dynamic_agent.py`, still present but no longer wired into
-the app). The ADRs below cover the persistent, PostgreSQL-backed experiment
-tracking platform that superseded it: experiments and datasets are saved,
-runs execute against them asynchronously, and any N completed runs can be
-compared, not just a fixed baseline/candidate pair.
+(`comparator.py` / `dynamic_agent.py`). Those files, and the frontend
+components that only they used (`AgentConfigPanel.jsx`, `RunComparison.jsx`,
+`MetricsDashboard.jsx`), have since been deleted — they were dead code,
+unreferenced by the app and importing names that no longer exist in
+`models.py`/`stats.py`. The ADRs below cover the persistent, PostgreSQL-backed
+experiment tracking platform that superseded the prototype: experiments and
+datasets are saved, runs execute against them asynchronously, and any N
+completed runs can be compared, not just a fixed baseline/candidate pair.
 
 ---
 
@@ -490,3 +493,369 @@ strings and convert `NaN` or infinite floats to `null` using
 - Stored summaries use string UUIDs; Python UUID objects are reconstructed by
   the response schema when needed.
 - New JSONB summary fields should use the same utility before persistence.
+
+---
+
+## ADR-014: Why WebSockets replace polling for run progress
+
+**Status:** Accepted
+**Date:** 2026-07-13
+**Context:**
+
+The initial platform polled run status every two seconds. That cadence hid
+per-question results, added repeated HTTP reads, and made progress feel
+delayed during an active benchmark.
+
+**Decision:**
+
+Use a per-run WebSocket endpoint backed by an in-process fan-out hub. The
+runner publishes a progress event after each persisted result, then sends a
+terminal completed or error event. The database remains the source of truth
+for reconnecting clients.
+
+**Rationale:**
+
+- A push event contains both the exact progress count and the latest result,
+  enabling a live table without periodic full-run reads.
+- Fan-out queues let several browser tabs watch one run without putting a
+  browser WebSocket object into the persistence layer.
+- Reconnects are safe: a client hydrates from `GET /runs/{id}` and then
+  resumes the WebSocket stream, so an in-memory event is never the only copy
+  of benchmark data.
+
+**Consequences:**
+
+- The event hub is process-local. Multi-instance deployment will need a
+  shared broker such as Redis while keeping the event format unchanged.
+
+---
+
+## ADR-015: Why report effect size alongside p-value
+
+**Status:** Accepted
+**Date:** 2026-07-13
+**Context:**
+
+A p-value says whether an observed difference is unlikely under the null
+hypothesis; it does not communicate the practical size of the difference.
+
+**Decision:**
+
+Report the paired delta, a 95% t confidence interval, and Cohen's d using
+the pooled sample standard deviation. Classify the absolute d as negligible,
+small, medium, or large.
+
+**Rationale:**
+
+- Confidence intervals show a plausible range for the true per-question
+  difference instead of a binary significant/not-significant label.
+- Effect size makes a tiny but statistically significant difference visibly
+  distinct from a meaningful regression or improvement.
+
+**Consequences:**
+
+- Degenerate zero-variance samples report a zero effect size rather than an
+  unbounded value, keeping JSON and the UI robust.
+
+---
+
+## ADR-016: External agent protocol design
+
+**Status:** Accepted
+**Date:** 2026-07-13
+**Context:**
+
+BenchX must evaluate deployed FastAPI and RAG agents, not only provider SDK
+calls configured inside BenchX.
+
+**Decision:**
+
+External experiments make an async HTTP POST to a configured endpoint with
+`{"question": "..."}` and optionally an `Authorization: Bearer` header. A
+successful response supplies `{"answer": "...", "tokens_used": 150}`;
+token usage is estimated from text if omitted. Calls have a 30-second timeout
+and external cost is recorded as zero because provider pricing is unknown.
+
+**Rationale:**
+
+- The protocol is intentionally minimal and fits common FastAPI agent APIs.
+- A bounded timeout isolates a failed endpoint to one question rather than
+  blocking the rest of a concurrent run.
+
+**Consequences:**
+
+- Custom request and response shapes need an adapter in a future version;
+  the stable base protocol keeps initial integration zero-config.
+
+---
+
+## ADR-017: Project-scoped comparison history design
+
+**Status:** Accepted
+**Date:** 2026-07-13
+**Context:**
+
+One-off comparisons cannot show whether iterative work improves an agent over
+time.
+
+**Decision:**
+
+Persist a lightweight `comparison_history` record under a user-provided
+project name. It references the immutable comparison and its baseline and
+candidate runs, while storing the verdict and metric count needed for fast
+timeline display.
+
+**Rationale:**
+
+- Reusing the existing comparison summary avoids duplicating per-question
+  data or allowing historical values to drift.
+- Project tags keep unrelated agents separate without introducing a new
+  project lifecycle before users need one.
+
+**Consequences:**
+
+- Trends are computed from saved comparison summaries. A future project table
+  can add ownership and descriptions without changing stored history rows.
+
+---
+
+## ADR-018: Why support four model providers
+
+**Status:** Accepted
+**Date:** 2026-07-13
+**Context:**
+
+Useful evaluation requires meaningful alternatives. A single-provider model
+picker limits comparisons to prompt and temperature changes, even when the
+largest practical change may be a model with a different price, context
+window, latency profile, or reasoning capability.
+
+**Decision:**
+
+BenchX exposes metadata-driven OpenAI, Anthropic, Groq, and NVIDIA model
+registries through `GET /models`. OpenAI-compatible providers share one call
+path, Anthropic retains its SDK-specific message shape, and runs validate that
+the selected provider key is configured before starting.
+
+**Rationale:**
+
+- Diversity creates real cost/quality tradeoffs rather than cosmetic
+  single-provider comparisons.
+- A backend registry keeps model pricing and context metadata consistent
+  between validation, execution, cost calculation, and the frontend picker.
+- Early credential validation gives an actionable configuration error instead
+  of allowing a background run to fail with an opaque provider exception.
+
+**Consequences:**
+
+- Model availability and pricing should be reviewed as providers deprecate or
+  change offerings; the single registry makes that maintenance localized.
+
+---
+
+## ADR-019: Why pgvector over an in-memory/numpy brute-force vector store
+
+**Status:** Accepted
+**Date:** 2026-07-16
+**Context:**
+
+The RAG pipeline needs to store chunk embeddings and retrieve the top-k
+nearest to a question's embedding. Two realistic options: keep embeddings as
+JSONB arrays and loop cosine similarity in Python, or use a real vector
+extension on the Postgres instance the app already depends on.
+
+**Decision:**
+
+Use `pgvector` (`pgvector/pgvector:pg15` image, `Vector(1536)` column via
+`pgvector.sqlalchemy`, an HNSW cosine-ops index, retrieval via
+`Chunk.embedding.cosine_distance(...)` in the ORM).
+
+**Rationale:**
+
+- **Zero new infrastructure.** The stack is already fully Dockerized
+  Postgres; swapping the image is a one-line change, not a new service to
+  operate.
+- **It's the production-standard pattern**, and demonstrating it —
+  `CREATE EXTENSION vector`, a real ANN index, retrieval expressed through
+  the ORM's query builder rather than a hand-rolled loop — is worth more as a
+  signal of RAG infrastructure competence than the numpy alternative, which
+  reads as a toy in-memory implementation.
+- **Honesty check, stated plainly rather than implied:** at BenchX's actual
+  scale (tens to low hundreds of chunks per `(corpus_id, chunk_size)` pair),
+  an HNSW index has no measurable speed advantage over a sequential scan —
+  this choice is not "we needed it for performance," it's "we used the
+  correct architecture even though this specific dataset doesn't yet need it."
+  Claiming otherwise would be a misleading claim about a demo-scale system.
+
+**Consequences:**
+
+- Local development and CI both require the pgvector-enabled Postgres image;
+  a bare `postgres:15` will fail migration `0003` at `CREATE EXTENSION vector`.
+- If BenchX ever needed true production scale (millions of chunks), pgvector
+  itself scales there too — this decision doesn't need to be revisited, only
+  the index tuning would.
+
+---
+
+## ADR-020: Why chunks are keyed by (corpus_id, chunk_size) and lazily cached
+
+**Status:** Accepted
+**Date:** 2026-07-16
+**Context:**
+
+`chunk_size` and `top_k` existed on `Experiment` since the original schema
+but were never read by anything — pure decoration. Making them real requires
+deciding what "chunking" is a property of: the corpus alone, or the
+combination of corpus and chunk size.
+
+**Decision:**
+
+`Chunk` rows are keyed by `(corpus_id, chunk_size, document_id, chunk_index)`.
+`rag.ensure_chunks(session, corpus_id, chunk_size)` computes and persists
+chunks for a given pair on first use and reuses them afterward; it's called
+once at the start of `run_experiment`, not lazily inside the concurrent
+per-question tasks.
+
+**Rationale:**
+
+- **Chunking is genuinely a property of the pair, not the corpus alone.**
+  Two experiments pointed at the same corpus with `chunk_size=256` vs.
+  `chunk_size=1024` must retrieve from different chunk boundaries, or
+  comparing chunk sizes would be cosmetic — the whole point of this feature
+  is that the comparison is real.
+- **This makes "does chunk_size=256 beat chunk_size=1024" a normal
+  BenchX experiment comparison**, reusing `/comparisons` and the existing
+  paired-t-test engine unchanged — RAG configuration is just another
+  experiment dimension, not a new feature surface.
+- **Chunking once at run-start, not per-question, avoids a real race.**
+  `MAX_CONCURRENT_REQUESTS=5` concurrent `_process_question` tasks could
+  otherwise all discover a brand-new `(corpus_id, chunk_size)` pair
+  simultaneously and each try to chunk+embed+insert it, producing duplicate
+  rows. A single check-and-populate before the concurrent tasks start avoids
+  that entirely.
+- **Word-count chunking, not a real tokenizer.** `chunk_text` packs
+  paragraphs to ~chunk_size *words* with ~17.5% overlap, no `tiktoken`
+  dependency. This is an approximation (a chunk_size=256 chunk is roughly
+  ~330-350 GPT tokens, not exactly 256), which is fine because chunk_size is
+  only ever compared *relatively* within BenchX (256 vs. 1024 against the
+  same corpus), never against an external token budget.
+
+**Consequences:**
+
+- Adding a document to a corpus after chunks already exist for some
+  `chunk_size` would leave those cached chunks stale (missing the new
+  document); `add_document` handles this by deleting every `Chunk` row for
+  that `corpus_id` (all `chunk_size` variants), so the next
+  `ensure_chunks` call re-chunks the whole corpus fresh. Correct and cheap
+  at this data scale.
+- Every new `(corpus_id, chunk_size)` combination a user tries pays a
+  one-time embedding cost on first run; subsequent runs against the same
+  pair are effectively free.
+
+---
+
+## ADR-021: Why FDR correction is additive across the whole comparison family
+
+**Status:** Accepted
+**Date:** 2026-07-16
+**Context:**
+
+`compare_runs` runs one independent paired t-test per metric per run-pair —
+up to `C(n,2) x 4` tests in a single comparison. None of them were corrected
+for multiple comparisons: at a flat alpha=0.05, comparing enough
+experiments/metrics at once makes some "significant" results just noise.
+
+**Decision:**
+
+Apply Benjamini-Hochberg FDR correction (implemented directly in `stats.py`,
+~15 lines of numpy — no `statsmodels` dependency) across every `(pair,
+metric)` p-value produced within one `compare_runs()` call. Each pairwise
+metric gains `q_value` and `significant_corrected` *alongside* the existing
+`p_value`/`significant` — the raw fields are never overwritten, and
+`_direction`/`_pairwise_verdict`/`_run_verdict` (and
+`experiment_registry._history_metrics`, which reads `direction`) keep using
+the raw, uncorrected result.
+
+**Rationale:**
+
+- **The "family" for correction is the whole comparison, not each pair in
+  isolation.** A user comparing 3 runs across 4 metrics is implicitly running
+  12 hypothesis tests in one sitting; that's the unit FDR control should be
+  applied over, not each pair's 4 tests independently (which would
+  under-correct as more runs are added to the same comparison).
+- **Additive, not substitutive, on purpose.** Silently swapping the raw
+  result for the corrected one would hide *why* a result stopped being
+  "significant," which defeats the point of a portfolio project meant to
+  demonstrate the reasoning, not just the output. Showing both makes the
+  correction legible and lets a viewer see exactly which findings survive
+  scrutiny.
+- **Manual implementation over `statsmodels`.** The step-up BH procedure is
+  ~15 lines and well-understood; pulling in `statsmodels` (which drags in
+  `pandas`/`patsy`) for one function would be a disproportionate dependency
+  for what it buys.
+- **Verdicts stay anchored to the raw test deliberately.** Changing verdict
+  logic to use the corrected result would be a legitimate alternative
+  design, but was rejected here to keep this a strictly additive change with
+  zero risk to existing pairwise/run verdict behavior.
+
+**Consequences:**
+
+- A metric can show "✅ significant (raw)" and "— not significant (FDR
+  corrected)" side by side — this is intentional and the more honest of the
+  two signals when many things are being compared at once.
+- A lightweight `underpowered` flag (`n < UNDERPOWERED_MIN_N = 8` paired
+  observations) rides alongside, reusing data already computed — not a
+  formal power analysis, just a cheap, honest "small sample, interpret with
+  extra caution" signal.
+
+---
+
+## ADR-022: Why replicated trials are averaged before pairing, not modeled
+
+**Status:** Accepted
+**Date:** 2026-07-16
+**Context:**
+
+Every run executes each question exactly once. Pairing controls for
+question-level difficulty variance, but not for the fact that a single LLM
+call at nonzero temperature is one noisy draw from a distribution of
+possible outputs. Comparing configurations (chunk_size, prompt, model) at
+meaningfully nonzero temperature risks a "significant" result that's really
+just favorable sampling in one run, not a true effect of the thing being
+tested.
+
+**Decision:**
+
+`POST /runs` accepts an optional `replicate_count` (default 1, preserving
+today's exact behavior). When greater than 1, the runner executes each
+question that many times independently. `stats.py` groups all `Result` rows
+sharing a question's text within a run and *averages* each metric across
+them before that question enters the paired comparison — the paired t-test
+itself is completely unchanged, it just receives a less noisy input.
+
+**Rationale:**
+
+- **Averaging is the honest minimal fix, not a full repeated-measures
+  model.** A proper treatment would model between-question and
+  within-question (replicate) variance separately, e.g. a mixed-effects
+  design. That's real statistical machinery this project doesn't build.
+  Averaging reduces sampling noise via the law of large numbers without
+  claiming to be more rigorous than it is — the ADR says so explicitly
+  rather than letting a viewer assume otherwise.
+- **No schema change required.** A replicate is just another `Result` row
+  sharing a question's text; `Result` already supported that structurally,
+  the only real bug it would otherwise cause is `by_question` silently
+  overwriting earlier replicates instead of aggregating them — fixed here.
+- **Zero risk to existing runs.** `replicate_count=1` (the default) makes
+  the averaging step a no-op — one value averaged with itself is itself —
+  so every run created before this feature existed behaves identically.
+
+**Consequences:**
+
+- Replicates multiply LLM calls linearly (`questions x replicate_count`) —
+  proportionally more cost and run time. The Run modal surfaces the total
+  call count before starting so this is never a surprise.
+- Replicates matter when temperature is meaningfully above 0 *and* the
+  thing being compared is something other than temperature itself (chunk
+  size, prompt, model). At temperature≈0, or when temperature is the
+  variable under test, replicates add cost without adding signal.

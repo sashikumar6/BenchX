@@ -1,25 +1,40 @@
-version: "3.8"
 services:
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    restart: unless-stopped
     ports: ["8000:8000"]
     environment:
       DATABASE_URL: postgresql+asyncpg://benchx:benchx@db:5432/benchx
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
-    depends_on: [db]
-  
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   db:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
+    restart: unless-stopped
     environment:
       POSTGRES_USER: benchx
       POSTGRES_PASSWORD: benchx
       POSTGRES_DB: benchx
-    ports: ["5432:5432"]
+    ports: ["55433:5432"]
     volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchx -d benchx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

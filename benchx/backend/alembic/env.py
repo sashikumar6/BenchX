@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # import the models to make sure they are registered
-from database import Base, Experiment, Dataset, Run, Result, Comparison
+from database import Base, Comparison, ComparisonHistory, Dataset, Experiment, Result, Run
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

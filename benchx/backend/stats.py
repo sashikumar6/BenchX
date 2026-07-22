@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
-from .config import SIGNIFICANCE_THRESHOLD
+from .config import SIGNIFICANCE_THRESHOLD, UNDERPOWERED_MIN_N
 
 METRIC_FIELDS = {
     "latency": "latency_ms",
@@ -72,29 +72,72 @@ def _paired_metric_test(a_values: list[float], b_values: list[float]) -> dict:
             "p_value": 1.0,
             "significant": False,
             "confidence_interval": None,
+            "effect_size": 0.0,
+            "interpretation": "negligible",
         }
 
     result = stats.ttest_rel(b, a)
     p_value = float(result.pvalue)
+    if not math.isfinite(p_value):
+        p_value = None
 
     diffs = b - a
     se_diff = float(stats.sem(diffs))
     if se_diff == 0:
         ci = [round(delta, 6), round(delta, 6)]
     else:
-        t_crit = float(stats.t.ppf(0.975, df=len(diffs) - 1))
-        mean_diff = float(np.mean(diffs))
-        ci = [
-            round(mean_diff - t_crit * se_diff, 6),
-            round(mean_diff + t_crit * se_diff, 6),
-        ]
+        interval = stats.t.interval(0.95, df=len(diffs) - 1, loc=delta, scale=se_diff)
+        ci = [round(float(interval[0]), 6), round(float(interval[1]), 6)]
+
+    pooled_std = math.sqrt((float(np.var(a, ddof=1)) + float(np.var(b, ddof=1))) / 2)
+    effect_size = 0.0 if pooled_std == 0 else delta / pooled_std
+    abs_effect = abs(effect_size)
+    if abs_effect > 0.8:
+        interpretation = "large"
+    elif abs_effect > 0.5:
+        interpretation = "medium"
+    elif abs_effect > 0.2:
+        interpretation = "small"
+    else:
+        interpretation = "negligible"
 
     return {
         "delta": round(delta, 6),
-        "p_value": round(p_value, 6),
-        "significant": p_value < SIGNIFICANCE_THRESHOLD,
+        "p_value": round(p_value, 6) if p_value is not None else None,
+        "significant": p_value is not None and p_value < SIGNIFICANCE_THRESHOLD,
         "confidence_interval": ci,
+        "effect_size": round(effect_size, 6),
+        "interpretation": interpretation,
     }
+
+
+def _benjamini_hochberg(p_values: list[float | None]) -> list[float | None]:
+    """Return Benjamini-Hochberg FDR-adjusted q-values, same order as p_values.
+
+    Standard step-up procedure: sort ascending, scale each by m/rank, then
+    take a running minimum from the largest rank down so q-values stay
+    monotonic. `None` entries (tests that couldn't produce a p-value) pass
+    through unchanged. Applied across the *entire* family of p-values in one
+    compare_runs() call (every metric x every pair), not per-pair — see
+    ADR-021.
+    """
+    indices = [i for i, p in enumerate(p_values) if p is not None]
+    if not indices:
+        return [None] * len(p_values)
+
+    vals = np.array([p_values[i] for i in indices], dtype=np.float64)
+    m = len(vals)
+    order = np.argsort(vals)
+    ranked = vals[order] * m / (np.arange(m) + 1)
+    q_sorted = np.clip(np.minimum.accumulate(ranked[::-1])[::-1], 0, 1)
+
+    q_by_rank = np.empty(m)
+    q_by_rank[order] = q_sorted
+
+    out: list[float | None] = [None] * len(p_values)
+    for rank, original_index in enumerate(indices):
+        out[original_index] = round(float(q_by_rank[rank]), 6)
+    return out
 
 
 def _direction(metric_key: str, delta: float, significant: bool) -> str:
@@ -164,11 +207,24 @@ def compare_runs(runs: list[dict]) -> dict:
             mean, std = _mean_std(values) if values else (0.0, 0.0)
             metrics[metric_key] = {"mean": mean, "std": std}
 
+        # Average across replicates before pairing: a question can have
+        # multiple Result rows (one per replicate trial, see ADR-022).
+        # Averaging here — rather than treating each replicate as its own
+        # "question" — reduces temperature-driven sampling noise without
+        # changing the paired test itself; a replicate_count=1 run (today's
+        # default) has exactly one value per question, so this is a no-op
+        # for existing behavior.
+        question_values: dict[str, dict[str, list[float]]] = {}
+        for r in results:
+            question = _field(r, "question")
+            bucket = question_values.setdefault(question, {mk: [] for mk in METRIC_FIELDS})
+            for metric_key, field in METRIC_FIELDS.items():
+                bucket[metric_key].append(_field(r, field))
         by_question = {
-            _field(r, "question"): {
-                metric_key: _field(r, field) for metric_key, field in METRIC_FIELDS.items()
+            question: {
+                metric_key: float(np.mean(values)) for metric_key, values in metric_lists.items()
             }
-            for r in results
+            for question, metric_lists in question_values.items()
         }
         by_question_per_run[str(run["run_id"])] = by_question
 
@@ -202,7 +258,13 @@ def compare_runs(runs: list[dict]) -> dict:
                 b_values = [b_by_q[q][metric_key] for q in common_questions]
                 test = _paired_metric_test(a_values, b_values)
                 direction = _direction(metric_key, test["delta"], test["significant"])
-                pair_metrics[metric_key] = {**test, "direction": direction}
+                n = len(common_questions)
+                pair_metrics[metric_key] = {
+                    **test,
+                    "direction": direction,
+                    "n": n,
+                    "underpowered": n < UNDERPOWERED_MIN_N,
+                }
 
             pairwise.append(
                 {
@@ -212,6 +274,20 @@ def compare_runs(runs: list[dict]) -> dict:
                     "verdict": _pairwise_verdict(pair_metrics),
                 }
             )
+
+    # ── Multiple-comparison correction across the whole family ────────
+    # Every metric x every pair in this one compare_runs() call, corrected
+    # together (not per-pair) — see ADR-021. Additive fields only: raw
+    # `significant`/`p_value` are untouched, so _direction/_pairwise_verdict/
+    # _run_verdict below (and experiment_registry._history_metrics, which
+    # also reads `direction`) are unaffected.
+    flat_refs = [(pair, metric_key) for pair in pairwise for metric_key in pair["metrics"]]
+    q_values = _benjamini_hochberg([pair["metrics"][metric_key]["p_value"] for pair, metric_key in flat_refs])
+    for (pair, metric_key), q_value in zip(flat_refs, q_values):
+        pair["metrics"][metric_key]["q_value"] = q_value
+        pair["metrics"][metric_key]["significant_corrected"] = (
+            q_value is not None and q_value < SIGNIFICANCE_THRESHOLD
+        )
 
     # ── Per-run overall verdict, anchored to the first run (baseline) ─
     baseline_id = runs[0]["run_id"]

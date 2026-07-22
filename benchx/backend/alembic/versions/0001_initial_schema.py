@@ -17,10 +17,15 @@ down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# create_type=False: the enum is created explicitly via .create() in
+# upgrade() below (checkfirst=True, so it's a no-op if already present).
+# Without create_type=False, op.create_table()'s DDL compiler *also* tries
+# to CREATE TYPE for any enum-typed column it sees, racing with the
+# explicit create and failing with "type already exists".
 experiment_status = postgresql.ENUM(
-    "configured", "running", "completed", "failed", name="experiment_status"
+    "configured", "running", "completed", "failed", name="experiment_status", create_type=False
 )
-run_status = postgresql.ENUM("running", "completed", "failed", name="run_status")
+run_status = postgresql.ENUM("running", "completed", "failed", name="run_status", create_type=False)
 
 
 def upgrade() -> None:

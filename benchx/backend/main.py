@@ -9,22 +9,28 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import experiment_registry as registry
-from .config import BACKEND_HOST, BACKEND_PORT, SUPPORTED_MODELS
-from .database import RunStatus, get_session
-from .experiment_runner import run_experiment
+from .config import BACKEND_HOST, BACKEND_PORT, SUPPORTED_MODELS, get_provider_api_key, list_models_by_provider
+from .database import RunStatus, async_session, get_session
+from .experiment_runner import build_run_summary, run_experiment
 from .models import (
     Comparison,
     ComparisonCreate,
+    ComparisonHistoryCreate,
+    ComparisonHistoryEntry,
     ComparisonSummary,
+    Corpus,
+    CorpusCreate,
     Dataset,
     DatasetCreate,
+    Document,
+    DocumentCreate,
     Experiment,
     ExperimentCreate,
     Run,
@@ -32,6 +38,7 @@ from .models import (
     RunDetail,
     RunStatusResponse,
 )
+from .progress import run_progress_hub
 from .stats import compare_runs
 
 app = FastAPI(
@@ -81,13 +88,64 @@ async def health():
     return {"status": "ok", "service": "benchx"}
 
 
+@app.get("/models")
+async def list_models():
+    return list_models_by_provider()
+
+
+# ── Corpora (RAG knowledge bases) ───────────────────────────────────
+@app.post("/corpora", response_model=Corpus)
+async def create_corpus(data: CorpusCreate, session: AsyncSession = Depends(get_session)):
+    return await registry.create_corpus(session, data)
+
+
+@app.get("/corpora", response_model=list[Corpus])
+async def list_corpora(session: AsyncSession = Depends(get_session)):
+    return await registry.list_corpora(session)
+
+
+@app.get("/corpora/{corpus_id}", response_model=Corpus)
+async def get_corpus(corpus_id: UUID, session: AsyncSession = Depends(get_session)):
+    corpus = await registry.get_corpus(session, corpus_id)
+    if corpus is None:
+        raise HTTPException(404, "Corpus not found")
+    return corpus
+
+
+@app.delete("/corpora/{corpus_id}")
+async def delete_corpus(corpus_id: UUID, session: AsyncSession = Depends(get_session)):
+    deleted = await registry.delete_corpus(session, corpus_id)
+    if not deleted:
+        raise HTTPException(404, "Corpus not found")
+    return {"deleted": True}
+
+
+@app.post("/corpora/{corpus_id}/documents", response_model=Document)
+async def add_document(
+    corpus_id: UUID, data: DocumentCreate, session: AsyncSession = Depends(get_session)
+):
+    document = await registry.add_document(session, corpus_id, data)
+    if document is None:
+        raise HTTPException(404, "Corpus not found")
+    return document
+
+
 # ── Experiments ──────────────────────────────────────────────────────
 @app.post("/experiments", response_model=Experiment)
 async def create_experiment(
     data: ExperimentCreate, session: AsyncSession = Depends(get_session)
 ):
-    if data.model not in SUPPORTED_MODELS:
+    if data.type == "builtin" and data.model not in SUPPORTED_MODELS:
         raise HTTPException(400, f"Unsupported model '{data.model}'")
+    if data.type == "external" and not data.endpoint_url:
+        raise HTTPException(400, "External experiments require an endpoint URL")
+    if data.corpus_id is not None:
+        if data.type != "builtin":
+            raise HTTPException(400, "RAG corpora are only supported for builtin experiments")
+        if await registry.get_corpus(session, data.corpus_id) is None:
+            raise HTTPException(404, "Corpus not found")
+        if data.chunk_size is None or data.top_k is None:
+            raise HTTPException(400, "RAG experiments require both chunk_size and top_k")
     return await registry.create_experiment(session, data)
 
 
@@ -155,11 +213,28 @@ async def create_run(
     dataset = await registry.get_dataset(session, data.dataset_id)
     if dataset is None:
         raise HTTPException(404, "Dataset not found")
+    if data.replicate_count < 1:
+        raise HTTPException(400, "replicate_count must be at least 1")
+    if experiment.type.value == "builtin":
+        try:
+            get_provider_api_key(SUPPORTED_MODELS[experiment.model]["provider"])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     run = await registry.create_run(
-        session, data.experiment_id, data.dataset_id, total_questions=len(dataset.questions)
+        session,
+        data.experiment_id,
+        data.dataset_id,
+        total_questions=len(dataset.questions) * data.replicate_count,
     )
-    background_tasks.add_task(run_experiment, data.experiment_id, data.dataset_id, run.id)
+    background_tasks.add_task(
+        run_experiment,
+        data.experiment_id,
+        data.dataset_id,
+        run.id,
+        run_progress_hub,
+        data.replicate_count,
+    )
     return run
 
 
@@ -188,6 +263,73 @@ async def get_run_status(run_id: UUID, session: AsyncSession = Depends(get_sessi
         completed_questions=run.completed_questions,
         error=run.error,
     )
+
+
+@app.websocket("/ws/runs/{run_id}")
+async def run_progress_websocket(websocket: WebSocket, run_id: UUID):
+    """Stream persisted per-question run updates to one connected client."""
+    await websocket.accept()
+    queue = await run_progress_hub.subscribe(run_id)
+    try:
+        async with async_session() as session:
+            run = await registry.get_run(session, run_id)
+        if run is None:
+            await websocket.send_json(
+                {"type": "error", "run_id": str(run_id), "message": "Run not found"}
+            )
+            await websocket.close(code=4404)
+            return
+
+        latest = run.results[-1] if run.results else None
+        if run.status == RunStatus.completed:
+            await websocket.send_json(
+                {
+                    "type": "completed",
+                    "run_id": str(run_id),
+                    "summary": build_run_summary(run.results),
+                }
+            )
+            return
+        if run.status == RunStatus.failed:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "run_id": str(run_id),
+                    "message": run.error or "Run failed",
+                }
+            )
+            return
+
+        await websocket.send_json(
+            {
+                "type": "progress",
+                "run_id": str(run_id),
+                "completed": run.completed_questions,
+                "total": run.total_questions,
+                "latest_result": (
+                    {
+                        "id": str(latest.id),
+                        "question": latest.question,
+                        "response": latest.response,
+                        "latency_ms": latest.latency_ms,
+                        "cost_usd": latest.cost_usd,
+                        "relevancy_score": latest.relevancy_score,
+                        "hallucination_score": latest.hallucination_score,
+                    }
+                    if latest is not None
+                    else None
+                ),
+            }
+        )
+        while True:
+            event = await queue.get()
+            await websocket.send_json(event)
+            if event["type"] in {"completed", "error"}:
+                return
+    except WebSocketDisconnect:
+        return
+    finally:
+        await run_progress_hub.unsubscribe(run_id, queue)
 
 
 # ── Comparisons ──────────────────────────────────────────────────────
@@ -257,6 +399,84 @@ async def get_comparison(comparison_id: UUID, session: AsyncSession = Depends(ge
         summary=ComparisonSummary(**comparison.summary),
         created_at=comparison.created_at,
     )
+
+
+# ── Project comparison history ───────────────────────────────────────
+async def _history_entry(history, session: AsyncSession) -> ComparisonHistoryEntry:
+    baseline_run = await registry.get_run(session, history.baseline_run_id)
+    candidate_run = await registry.get_run(session, history.candidate_run_id)
+    baseline_experiment = (
+        await registry.get_experiment(session, baseline_run.experiment_id) if baseline_run else None
+    )
+    candidate_experiment = (
+        await registry.get_experiment(session, candidate_run.experiment_id) if candidate_run else None
+    )
+    metrics = registry._history_metrics(
+        history.comparison.summary, history.baseline_run_id, history.candidate_run_id
+    )
+    return ComparisonHistoryEntry(
+        id=history.id,
+        project_name=history.project_name,
+        comparison_id=history.comparison_id,
+        baseline_run_id=history.baseline_run_id,
+        candidate_run_id=history.candidate_run_id,
+        baseline_name=baseline_experiment.name if baseline_experiment else str(history.baseline_run_id),
+        candidate_name=candidate_experiment.name if candidate_experiment else str(history.candidate_run_id),
+        verdict=history.verdict,
+        metrics_improved=history.metrics_improved,
+        metrics_total=history.metrics_total,
+        metrics=metrics,
+        created_at=history.created_at,
+    )
+
+
+@app.get("/projects")
+async def list_projects(session: AsyncSession = Depends(get_session)):
+    return await registry.list_projects(session)
+
+
+@app.post("/projects/{project_name}/history", response_model=ComparisonHistoryEntry)
+async def save_project_history(
+    project_name: str,
+    data: ComparisonHistoryCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    project_name = project_name.strip()
+    if not project_name:
+        raise HTTPException(400, "Project name is required")
+    comparison = await registry.get_comparison(session, data.comparison_id)
+    if comparison is None:
+        raise HTTPException(404, "Comparison not found")
+    try:
+        history = await registry.save_comparison_to_project(session, project_name, comparison)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return await _history_entry(history, session)
+
+
+@app.get("/projects/{project_name}/history", response_model=list[ComparisonHistoryEntry])
+async def project_history(project_name: str, session: AsyncSession = Depends(get_session)):
+    history = await registry.list_project_history(session, project_name)
+    return [await _history_entry(entry, session) for entry in history]
+
+
+@app.get("/projects/{project_name}/trend")
+async def project_trend(project_name: str, session: AsyncSession = Depends(get_session)):
+    history = await registry.list_project_history(session, project_name)
+    points = []
+    for entry in history:
+        metrics = registry._history_metrics(
+            entry.comparison.summary, entry.baseline_run_id, entry.candidate_run_id
+        )
+        points.append(
+            {
+                "date": entry.created_at.isoformat(),
+                "comparison_id": str(entry.comparison_id),
+                "verdict": entry.verdict,
+                **{key: value.get("delta") for key, value in metrics.items()},
+            }
+        )
+    return {"project_name": project_name, "points": points}
 
 
 if __name__ == "__main__":
