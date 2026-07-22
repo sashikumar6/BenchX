@@ -1,0 +1,43 @@
+# Render Blueprint — deploys the BenchX backend (Docker) and frontend (static site).
+#
+# To use: go to https://dashboard.render.com → New → Blueprint, connect this
+# GitHub repo. Render auto-detects this file and proposes both services below.
+# Env vars marked `sync: false` are NOT stored here — Render prompts for them
+# once, during blueprint creation, and stores them encrypted on their side.
+
+services:
+  - name: benchx-backend
+    type: web
+    runtime: docker
+    dockerfilePath: ./benchx/backend/Dockerfile
+    dockerContext: ./benchx
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+
+  - name: benchx-frontend
+    type: web
+    runtime: static
+    rootDir: benchx/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Predicted from the backend service name above. If "benchx-backend" was
+      # already taken by someone else on Render, it'll get a different
+      # subdomain — check the actual URL in the Render dashboard after the
+      # backend's first deploy and update this if it doesn't match.
+      - key: VITE_API_URL
+        value: https://benchx-backend.onrender.com
+    routes:
+      - src: /**
+        dest: /index.html
