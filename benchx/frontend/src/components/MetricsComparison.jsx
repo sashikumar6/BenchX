@@ -63,7 +63,6 @@ function MetricCard({ metricKey, runs, pairwise }) {
   return (
     <div className="bg-bg-card border border-border rounded-2xl p-5">
       <div className="flex items-center gap-2 mb-4">
-        <span className="text-lg">{info.icon}</span>
         <h3 className="text-sm font-semibold text-text-primary">
           {info.label} {info.lowerBetter ? '(lower is better)' : '(higher is better)'}
         </h3>
@@ -102,7 +101,7 @@ function MetricCard({ metricKey, runs, pairwise }) {
                       : 'text-text-muted'
                 }`}
                 >
-                  {d.significant ? '✅' : '—'}{' '}
+                  {d.significant ? 'significant' : '—'}{' '}
                   {d.deltaPct !== null ? `${d.deltaPct > 0 ? '+' : ''}${d.deltaPct.toFixed(0)}%` : ''}{' '}
                   {d.pValue != null ? `(p=${d.pValue.toFixed(3)})` : '(p=—)'}
                 </span>
@@ -124,7 +123,7 @@ function MetricCard({ metricKey, runs, pairwise }) {
                     className="text-[10px] text-text-muted mt-1"
                     title="FDR-corrected across every metric x pair compared in this run, so testing more things at once doesn't inflate the false-positive rate."
                   >
-                    {d.significantCorrected ? '✅' : '—'} q={d.qValue.toFixed(3)} (FDR-corrected)
+                    {d.significantCorrected ? 'significant' : '—'} q={d.qValue.toFixed(3)} (FDR-corrected)
                   </p>
                 )}
                 {d.underpowered && (
@@ -146,8 +145,8 @@ export default function MetricsComparison({ runs, pairwise }) {
     <div>
       <h2 className="text-lg font-semibold text-text-primary mb-1">Metrics Comparison</h2>
       <p className="text-xs text-text-secondary mb-4">
-        Each bar is a run's average for that metric vs. the leftmost run (the baseline). ✅ means the difference is
-        statistically significant — unlikely to be random noise — not just numerically different.
+        Each bar is a run's average for that metric vs. the leftmost run (the baseline). "significant" means the
+        difference is statistically significant — unlikely to be random noise — not just numerically different.
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {Object.keys(METRIC_INFO).map((key) => (

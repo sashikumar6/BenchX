@@ -1,8 +1,8 @@
 export const METRIC_INFO = {
-  latency: { label: 'Latency', icon: '⚡', lowerBetter: true, format: (v) => `${Math.round(v)} ms` },
-  cost: { label: 'Cost', icon: '💰', lowerBetter: true, format: (v) => `$${v.toFixed(6)}` },
-  relevancy: { label: 'Relevancy', icon: '🎯', lowerBetter: false, format: (v) => v.toFixed(4) },
-  hallucination: { label: 'Hallucination', icon: '🔍', lowerBetter: true, format: (v) => v.toFixed(4) },
+  latency: { label: 'Latency', lowerBetter: true, format: (v) => `${Math.round(v)} ms` },
+  cost: { label: 'Cost', lowerBetter: true, format: (v) => `$${v.toFixed(6)}` },
+  relevancy: { label: 'Relevancy', lowerBetter: false, format: (v) => v.toFixed(4) },
+  hallucination: { label: 'Hallucination', lowerBetter: true, format: (v) => v.toFixed(4) },
 }
 
 export const VERDICT_STYLES = {

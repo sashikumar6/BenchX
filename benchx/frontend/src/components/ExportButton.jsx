@@ -45,7 +45,7 @@ export default function ExportButton({ comparison, resultsByRun }) {
     })
     const text = [
       `BenchX Comparison: ${comparison.name}`,
-      `Verdict: ${pair.verdict} ${pair.verdict.includes('B') ? '✅' : ''}`,
+      `Verdict: ${pair.verdict}`,
       ...lines,
       `Evaluated on ${resultsByRun?.[comparison.run_ids[0]]?.length || 0} questions | Built with BenchX`,
     ].join('\n')

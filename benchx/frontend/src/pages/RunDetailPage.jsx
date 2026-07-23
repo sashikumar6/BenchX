@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import MetricSummaryCards from '../components/MetricSummaryCards'
 import ResultsTable from '../components/ResultsTable'
@@ -16,11 +16,24 @@ export default function RunDetailPage() {
   const [loading, setLoading] = useState(true)
   const [latestResult, setLatestResult] = useState(null)
   const toast = useToast()
+  const hasWarnedRef = useRef(false)
 
   const refresh = useCallback(async () => {
     try {
       const runData = await getRun(runId)
       setRun(runData)
+
+      if (!hasWarnedRef.current && runData.status !== 'running') {
+        const failedCount = runData.results.filter((r) => r.response?.startsWith('[ERROR]')).length
+        if (failedCount > 0) {
+          hasWarnedRef.current = true
+          toast.error(
+            failedCount === runData.results.length
+              ? `All ${failedCount} questions failed — expand a row below to see why.`
+              : `${failedCount} of ${runData.results.length} questions failed — expand a row below to see why.`
+          )
+        }
+      }
 
       if (!experiment || experiment.id !== runData.experiment_id) {
         getExperiment(runData.experiment_id).then(setExperiment).catch(() => {})
@@ -58,6 +71,7 @@ export default function RunDetailPage() {
     }
     if (event.type === 'error') {
       setRun((previous) => previous ? { ...previous, status: 'failed', error: event.message } : previous)
+      hasWarnedRef.current = true
       toast.error(event.message)
       refresh()
     }

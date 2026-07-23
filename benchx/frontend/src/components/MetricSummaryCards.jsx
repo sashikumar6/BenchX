@@ -22,7 +22,6 @@ export default function MetricSummaryCards({ results }) {
         return (
           <div key={key} className="bg-bg-card border border-border rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-lg">{info.icon}</span>
               <h3 className="text-sm font-semibold text-text-primary">{info.label}</h3>
             </div>
             <p className="text-2xl font-semibold text-text-primary font-mono">

@@ -35,7 +35,7 @@ export default function VerdictBanner({ runs, pairwise }) {
 
       {best ? (
         <p className="text-text-primary text-sm">
-          🏆 <span className="font-semibold">{best.run.experiment_name}</span> wins on{' '}
+          <span className="font-semibold">{best.run.experiment_name}</span> wins on{' '}
           {best.improved}/{best.total} metrics (p&lt;0.05) vs baseline.
         </p>
       ) : (

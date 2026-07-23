@@ -79,12 +79,17 @@ async def _call_model(experiment: Experiment, question: str) -> tuple[str, int, 
             messages.append({"role": "system", "content": experiment.system_prompt})
         messages.append({"role": "user", "content": question})
 
-        completion = await client.chat.completions.create(
-            model=experiment.model,
-            temperature=experiment.temperature,
-            max_tokens=experiment.max_tokens,
-            messages=messages,
-        )
+        # OpenAI's reasoning models (o1/o3 family) reject `temperature` outright
+        # and use `max_completion_tokens` in place of `max_tokens`.
+        is_reasoning_model = SUPPORTED_MODELS[experiment.model]["category"] == "reasoning"
+        kwargs: dict[str, Any] = dict(model=experiment.model, messages=messages)
+        if is_reasoning_model:
+            kwargs["max_completion_tokens"] = experiment.max_tokens
+        else:
+            kwargs["temperature"] = experiment.temperature
+            kwargs["max_tokens"] = experiment.max_tokens
+
+        completion = await client.chat.completions.create(**kwargs)
         elapsed = time.perf_counter() - start
         answer = completion.choices[0].message.content or ""
         tokens_in = completion.usage.prompt_tokens
